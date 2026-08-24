@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мұғалімнің электронды журналы</title>
+<style>
+body{font-family:Arial,sans-serif;background:#eef4f8;margin:0;color:#18303d}
+.box{max-width:1200px;margin:25px auto;background:#fff;padding:25px;border-radius:18px;box-shadow:0 5px 25px #0001}
+h1{color:#164b6b}
+.bar{display:flex;gap:10px;flex-wrap:wrap}
+.bar input{padding:11px;border:1px solid #ccd8df;border-radius:8px}
+.btn{padding:11px 16px;border:0;border-radius:8px;font-weight:bold;cursor:pointer}
+.blue{background:#287bb6;color:white}.red{background:#d9534f;color:white}.gray{background:#e5edf2;color:#18303d}
+table{width:100%;border-collapse:collapse;margin-top:18px}
+th,td{border:1px solid #d4dee5;padding:10px;text-align:center}
+th{background:#eaf2f7}
+.score{font-size:20px;font-weight:bold;color:#16834b}
+.teacherScore{width:65px;padding:7px;border:1px solid #b9cbd6;border-radius:7px;text-align:center;font-size:17px;font-weight:bold}
+.details{background:#f7fafc;text-align:left;padding:14px;border-radius:10px;margin-top:8px}
+.details table{margin-top:10px;background:white}
+.hidden{display:none}.status{font-weight:bold;color:#16834b}.feedbackInput{width:95%;padding:7px;border:1px solid #b9cbd6;border-radius:7px}.sendBtn{margin-top:6px}
+.note{margin-top:12px;padding:12px;background:#fff8df;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>📋 Мұғалімнің электронды журналы</h1>
+<p>Оқушы зертхананы аяқтағанда жұмыс журналға түседі. Бағаны мұғалім өзі қояды.</p>
+
+<div class="bar">
+<input id="search" placeholder="Аты-жөнін іздеу" oninput="render()">
+<input id="cls" placeholder="Сынып" oninput="render()">
+<button class="btn blue" onclick="load()">↻ Жаңарту</button>
+<button class="btn red" onclick="clearJ()">Тазалау</button>
+</div>
+<div class="note">Мұғалім оқушының нәтижесін тексереді, 0–10 балл қояды, қате/түсіндірме жазады және «Оқушыға жіберу» батырмасын басады. Оқушы өз бетінде балын және қателерін көреді.</div>
+
+<table>
+<thead><tr>
+<th>№</th><th>Аты-жөні</th><th>Сыныбы</th><th>Зертханалық жұмыс</th>
+<th>Балл</th><th>Мәртебесі</th><th>Күні</th><th>Нәтижелер</th>
+</tr></thead>
+<tbody id="body"></tbody>
+</table>
+</div>
+
+<script>
+const API_URL="YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL";
+let data=[];
+
+function load(){
+  try{
+    data=JSON.parse(localStorage.getItem("teacherDemo")||"[]");
+    if(!Array.isArray(data)) data=[];
+  }catch(e){data=[];}
+
+  // Соңғы тапсырманы да тексереміз.
+  try{
+    const pending=JSON.parse(localStorage.getItem("pendingLab")||"null");
+    if(pending && pending.name){
+      const key=recordKey(pending);
+      const exists=data.some(x=>recordKey(x)===key);
+      if(!exists){ data.push(pending); localStorage.setItem("teacherDemo",JSON.stringify(data)); }
+    }
+  }catch(e){}
+  render();
+}
+
+function recordKey(x){
+  return [x.name||"",x.cls||"",x.lab||"",x.date||""].join("|");
+}
+
+function esc(v){
+  return String(v==null?"":" "+v).trim()
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function resultsTable(results){
+  if(!Array.isArray(results)||!results.length)
+    return '<div class="details">Өлшеу нәтижелері енгізілмеген.</div>';
+  return '<div class="details"><b>Оқушы енгізген өлшеу нәтижелері:</b>'+
+    '<table><thead><tr><th>№</th><th>t, с</th><th>v, м/с</th><th>s, м</th><th>a, м/с²</th></tr></thead><tbody>'+
+    results.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.t)+'</td><td>'+esc(r.v)+'</td><td>'+esc(r.s)+'</td><td>'+esc(r.a)+'</td></tr>').join('')+
+    '</tbody></table></div>';
+}
+
+function render(){
+  let s=document.getElementById("search").value.toLowerCase();
+  let c=document.getElementById("cls").value.toLowerCase();
+  document.getElementById("body").innerHTML=data
+    .filter(x=>String(x.name||"").toLowerCase().includes(s)&&String(x.cls||"").toLowerCase().includes(c))
+    .map((x,i)=>{
+      let score=(x.score!==undefined&&x.score!==null&&x.score!=="")?x.score:"";
+      let feedback=esc(x.feedback||"");
+      let errors=esc(x.errors||"");
+      return '<tr>'+
+        '<td>'+(i+1)+'</td>'+
+        '<td>'+esc(x.name)+'</td>'+
+        '<td>'+esc(x.cls)+'</td>'+
+        '<td>'+esc(x.lab)+'</td>'+
+        '<td class="score"><input class="teacherScore" type="number" min="0" max="10" step="1" value="'+esc(score)+'" placeholder="—" onchange="setScore('+i+',this.value)"></td>'+
+        '<td class="status">'+esc(x.status||"Орындалды")+'</td>'+
+        '<td>'+((x.date)?new Date(x.date).toLocaleString("kk-KZ"):"—")+'</td>'+
+        '<td><button class="btn gray" onclick="toggleDetails('+i+')">Көру</button>'+
+        '<div class="details" style="display:none" id="teacher-feedback-'+i+'">'+
+        '<label>Мұғалімнің пікірі</label><textarea class="feedbackInput" id="feedback-'+i+'" rows="2">'+feedback+'</textarea>'+
+        '<label>Қате / түсіндірме</label><textarea class="feedbackInput" id="errors-'+i+'" rows="2">'+errors+'</textarea>'+
+        '<button class="btn blue sendBtn" onclick="sendFeedback('+i+')">📤 Оқушыға жіберу</button>'+
+        '</div></td>'+
+        '</tr>'+
+        '<tr id="detail-'+i+'" class="hidden"><td colspan="8">'+resultsTable(x.results)+'</td></tr>';
+    }).join("");
+}
+
+function sendFeedback(i){
+  if(!data[i]) return;
+  var scoreInput=document.querySelectorAll('.teacherScore')[i];
+  var score=(scoreInput && scoreInput.value!=='')?Number(scoreInput.value):'';
+  if(score!=='' && (!Number.isInteger(score)||score<0||score>10)){
+    alert('Балл 0 мен 10 аралығындағы бүтін сан болуы керек.');
+    return;
+  }
+
+  var feedback=document.getElementById('feedback-'+i).value.trim();
+  var errors=document.getElementById('errors-'+i).value.trim();
+
+  data[i].score=score;
+  data[i].feedback=feedback;
+  data[i].errors=errors;
+  data[i].status='Тексерілді — нәтиже оқушыға жіберілді';
+  data[i].checked=true;
+
+  localStorage.setItem('teacherDemo',JSON.stringify(data));
+
+  var studentFeedback={
+    name:data[i].name, cls:data[i].cls, lab:data[i].lab,
+    score:score, feedback:feedback, errors:errors,
+    date:new Date().toISOString()
+  };
+  localStorage.setItem('studentFeedback',JSON.stringify(studentFeedback));
+
+  try{
+    var bc=new BroadcastChannel('labJournalChannel');
+    bc.postMessage({type:'scoreUpdated',feedback:studentFeedback});
+    bc.close();
+  }catch(e){}
+
+  render();
+  alert('✓ Нәтиже оқушыға жіберілді. Оқушы балын және қателерін көре алады.');
+}
+
+function toggleDetails(i){
+  var row=document.getElementById("detail-"+i);
+  var panel=document.getElementById("teacher-feedback-"+i);
+  if(row) row.classList.toggle("hidden");
+  if(panel) panel.style.display=(panel.style.display==='none'?'block':'none');
+  return false;
+}
+
+function setScore(i,value){
+  if(!data[i]) return;
+  if(value===""){
+    data[i].score="";
+  }else{
+    let n=Number(value);
+    if(!Number.isInteger(n)||n<0||n>10){
+      alert("Балл 0 мен 10 аралығындағы бүтін сан болуы керек.");
+      render(); return;
+    }
+    data[i].score=n;
+  }
+  data[i].status='Мұғалім тексеріп жатыр';
+  localStorage.setItem("teacherDemo",JSON.stringify(data));
+  // Оқушыға баға кері байланыс ретінде сақталады.
+  let feedback={name:data[i].name,cls:data[i].cls,lab:data[i].lab,score:data[i].score,date:new Date().toISOString()};
+  localStorage.setItem("studentFeedback",JSON.stringify(feedback));
+  try{
+    const bc=new BroadcastChannel("labJournalChannel");
+    bc.postMessage({type:"scoreUpdated",feedback:feedback});
+    bc.close();
+  }catch(e){}
+  if(API_URL && !API_URL.startsWith("YOUR_")){
+    fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action:"score",record:data[i],score:data[i].score})}).catch(()=>{});
+  }
+}
+
+function clearJ(){
+  if(confirm("Журналды тазалау керек пе?")){
+    data=[];
+    localStorage.removeItem("teacherDemo");
+    localStorage.removeItem("pendingLab");
+    localStorage.removeItem("studentFeedback");
+    render();
+  }
+}
+
+try{
+  const bc=new BroadcastChannel("labJournalChannel");
+  bc.onmessage=function(e){
+    if(e.data && e.data.type==="newLab" && e.data.record){
+      try{
+        var rec=e.data.record;
+        var current=JSON.parse(localStorage.getItem("teacherDemo")||"[]");
+        if(!Array.isArray(current)) current=[];
+        if(!current.some(x=>recordKey(x)===recordKey(rec))){
+          current.push(rec);
+          localStorage.setItem("teacherDemo",JSON.stringify(current));
+        }
+        localStorage.removeItem("pendingLab");
+      }catch(err){}
+      load();
+    }else if(e.data && e.data.type==="scoreUpdated"){
+      load();
+    }
+  };
+}catch(e){}
+
+load();
+</script>
+</body>
+</html>
